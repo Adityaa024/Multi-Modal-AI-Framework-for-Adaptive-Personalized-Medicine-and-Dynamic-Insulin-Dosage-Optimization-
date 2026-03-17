@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Keep a minimal baseline; styling is primarily via utilities. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+/* Softer rendering for dashboard UI */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
