@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pkl
+.env
+.venv/
+results.csv
+errors.csv
+test_results.txt
