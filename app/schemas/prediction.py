@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class InsulinDosePredictionRequest(BaseModel):
@@ -106,6 +106,7 @@ class DosePredictionPatientInput(BaseModel):
     )
     feature_mode: Literal["structured", "structured_labs", "full"] = Field(
         default="full",
+        validation_alias=AliasChoices("feature_mode", "ablation_mode"),
         description=(
             "Ablation mode controlling which modality groups are used for inference: "
             "structured only, structured+l labs, or full multi-modal."

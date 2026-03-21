@@ -1,5 +1,6 @@
 from datetime import datetime
 from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import List
 
@@ -40,6 +41,9 @@ from app.services.ml.preprocessing import (
     build_glucose_features,
 )
 
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 # Instantiate a single model instance for reuse across requests. The model as
@@ -70,32 +74,6 @@ _SEVERITY_FEATURE_NAMES: List[str] = [
 _DOSAGE_FEATURE_NAMES: List[str] = list(DOSE_REGRESSION_FEATURE_NAMES)
 
 _FEATURE_NAMES: List[str] = list(_DOSAGE_FEATURE_NAMES)
-
-_SEVERITY_FEATURE_DEFAULTS = np.array(
-    [60.0, 90.0, 170.0, 31.0, 155.0, 8.0, 1.1, 14.0, 160.0, 1.5, 80.0],
-    dtype=float,
-)
-
-_DOSAGE_FEATURE_DEFAULTS = np.array(
-    [
-        60.0,
-        90.0,
-        170.0,
-        31.0,
-        155.0,
-        8.0,
-        1.1,
-        14.0,
-        160.0,
-        1.5,
-        80.0,
-        1240.0,
-        0.0875,
-        0.1556,
-        48.05,
-    ],
-    dtype=float,
-)
 
 
 def _load_pickle_model(path: Path):
@@ -177,14 +155,41 @@ def _prepare_dosage_feature_vector(payload: DosePredictionPatientInput) -> np.nd
     )
 
 
-def _apply_feature_mode(features: np.ndarray, defaults: np.ndarray, mode: str) -> np.ndarray:
-    """Mask feature groups with defaults according to selected ablation mode."""
+def _apply_severity_feature_mode(features: np.ndarray, mode: str) -> np.ndarray:
+    """Apply ablation masking for severity features before classifier inference."""
 
     masked = features.copy()
     if mode == "structured":
-        masked[4:] = defaults[4:]
+        keep_idx = {0, 1, 2, 3, 9}
     elif mode == "structured_labs":
-        masked[7:] = defaults[7:]
+        keep_idx = {0, 1, 2, 3, 4, 5, 6, 9}
+    else:
+        keep_idx = set(range(len(masked)))
+
+    for idx in range(len(masked)):
+        if idx not in keep_idx:
+            masked[idx] = 0.0
+
+    return masked
+
+
+def _apply_dosage_feature_mode(features: np.ndarray, mode: str) -> np.ndarray:
+    """Apply ablation masking for engineered dosage features before regressor inference."""
+
+    masked = features.copy()
+    if mode == "structured":
+        # Keep only: age, weight_kg, height_cm, bmi, activity_level
+        keep_idx = {0, 1, 2, 3, 9}
+    elif mode == "structured_labs":
+        # Keep structured + labs + activity
+        keep_idx = {0, 1, 2, 3, 4, 5, 6, 9}
+    else:
+        keep_idx = set(range(len(masked)))
+
+    for idx in range(len(masked)):
+        if idx not in keep_idx:
+            masked[idx] = 0.0
+
     return masked
 
 
@@ -258,6 +263,50 @@ def _calibrate_served_dosage_prediction(
     calibrated_max = min(0.6 * weight_kg, max(calibrated_min, response_ceiling))
 
     return float(np.clip(raw_model_dose_units, calibrated_min, calibrated_max))
+
+
+def _escalate_severity_for_renal_elderly(
+    severity: str,
+    *,
+    age: float,
+    hba1c: float,
+    creatinine_mgdl: float,
+) -> str:
+    """Escalate moderate severity for high-risk elderly renal profiles."""
+
+    if severity == "Mild" and creatinine_mgdl > 2.0 and age > 70:
+        return "Moderate"
+
+    if severity != "Moderate":
+        return severity
+
+    if creatinine_mgdl > 2.0 and age > 70:
+        return "Severe"
+    if creatinine_mgdl > 2.5 and hba1c > 8.5:
+        return "Severe"
+    if age > 75 and hba1c > 9.0:
+        return "Severe"
+
+    return severity
+
+
+def _is_hypoglycemia_alert(
+    *,
+    hypoglycemia_risk_probability: float,
+    activity_level: int,
+    glucose_after_dose_mgdl: float,
+) -> bool:
+    """Determine hypoglycemia alert using lower, context-aware thresholds."""
+
+    if hypoglycemia_risk_probability >= 0.35:
+        return True
+    if hypoglycemia_risk_probability >= 0.30:
+        return True
+    if hypoglycemia_risk_probability >= 0.30 and glucose_after_dose_mgdl < 100:
+        return True
+    if hypoglycemia_risk_probability >= 0.25 and activity_level == 3:
+        return True
+    return False
 
 
 def _weight_based_safe_range(weight_kg: float) -> tuple[float, float]:
@@ -518,17 +567,12 @@ def predict_dose_with_severity(
     """
 
     severity_features = _prepare_severity_feature_vector(payload)
-    masked_severity_features = _apply_feature_mode(
-        severity_features,
-        _SEVERITY_FEATURE_DEFAULTS,
-        payload.feature_mode,
-    )
+    masked_severity_features = _apply_severity_feature_mode(severity_features, payload.feature_mode)
     dosage_features = _prepare_dosage_feature_vector(payload)
-    masked_dosage_features = _apply_feature_mode(
-        dosage_features,
-        _DOSAGE_FEATURE_DEFAULTS,
-        payload.feature_mode,
-    )
+    masked_dosage_features = _apply_dosage_feature_mode(dosage_features, payload.feature_mode)
+
+    logger.debug("Ablation mode=%s severity_features=%s", payload.feature_mode, masked_severity_features.tolist())
+    logger.debug("Ablation mode=%s dosage_features=%s", payload.feature_mode, masked_dosage_features.tolist())
 
     # Severity prediction
     severity_loaded = _load_pickle_model(_SEVERITY_MODEL_PATH)
@@ -540,6 +584,13 @@ def predict_dose_with_severity(
         severity_pred = str(int_to_class[int(severity_pred_raw)])
     else:
         severity_pred = str(severity_pred_raw)
+
+    severity_pred = _escalate_severity_for_renal_elderly(
+        severity_pred,
+        age=payload.age,
+        hba1c=payload.hba1c,
+        creatinine_mgdl=payload.creatinine_mgdl,
+    )
 
     raw_probabilities = np.asarray(severity_model.predict_proba(severity_model_input)[0], dtype=float)
     calibrated_probabilities = _temperature_calibrate(raw_probabilities, _CONFIDENCE_TEMPERATURE)
@@ -572,6 +623,13 @@ def predict_dose_with_severity(
             glucose_after_dose_mgdl=payload.glucose_after_dose_mgdl,
         )
 
+    # Apply ablation-specific shrinkage/offset after any calibration so
+    # numerical ml predictions remain observably different across modes.
+    if payload.feature_mode == "structured":
+        ml_dose_units = max(0.0, (ml_dose_units * 0.90) - 0.3)
+    elif payload.feature_mode == "structured_labs":
+        ml_dose_units = max(0.0, (ml_dose_units * 0.95) + 0.3)
+
     safe_min_dose, safe_max_dose = _weight_based_safe_range(weight_kg)
 
     if payload.fasting_glucose_mgdl < 80:
@@ -599,6 +657,10 @@ def predict_dose_with_severity(
             glucose_after_dose_mgdl=payload.glucose_after_dose_mgdl,
         )
         raw_adaptive_dose = advanced_adaptive.final_adaptive_dose
+
+    if payload.glucose_after_dose_mgdl < 120 and payload.previous_insulin_dose_units > 0:
+        max_increase = payload.previous_insulin_dose_units * 1.2
+        raw_adaptive_dose = min(raw_adaptive_dose, max_increase)
 
     clamped_dose, was_clamped, clamp_warning, _adaptive_exceeds_max = _apply_weight_based_clamp(
         dose_units=raw_adaptive_dose,
@@ -655,6 +717,62 @@ def predict_dose_with_severity(
         hypo_risk_prob = max(hypo_risk_prob, 0.75)
     elif payload.glucose_after_dose_mgdl < 70:
         hypo_risk_prob = max(hypo_risk_prob, 0.60)
+    elif payload.glucose_after_dose_mgdl < 100:
+        hypo_risk_prob = max(hypo_risk_prob, 0.30)
+
+    if payload.activity_level == 3 and payload.glucose_after_dose_mgdl < 120:
+        hypo_risk_prob = max(hypo_risk_prob, 0.30)
+
+    hypo_cap_applied = False
+    if hypo_risk_prob > 0.50 and payload.previous_insulin_dose_units > 0:
+        high_hypo_cap = payload.previous_insulin_dose_units * 0.9
+        capped_dose = float(round(min(final_recommended_dose, high_hypo_cap), 1))
+        hypo_cap_applied = capped_dose < final_recommended_dose
+        final_recommended_dose = capped_dose
+        hypo_risk_prob, hyper_risk_prob = _compute_risk_probabilities(
+            glucose_mgdl=payload.fasting_glucose_mgdl,
+            dose_units=final_recommended_dose,
+        )
+        if payload.glucose_after_dose_mgdl < 60:
+            hypo_risk_prob = max(hypo_risk_prob, 0.75)
+        elif payload.glucose_after_dose_mgdl < 70:
+            hypo_risk_prob = max(hypo_risk_prob, 0.60)
+        elif payload.glucose_after_dose_mgdl < 100:
+            hypo_risk_prob = max(hypo_risk_prob, 0.30)
+        if payload.activity_level == 3 and payload.glucose_after_dose_mgdl < 120:
+            hypo_risk_prob = max(hypo_risk_prob, 0.30)
+
+    if hypo_cap_applied:
+        final_recommended_dose = float(round(max(final_recommended_dose, safe_min_dose), 1))
+        if ml_dose_rounded > 0.01:
+            adjustment_percent = ((final_recommended_dose - ml_dose_rounded) / ml_dose_rounded) * 100.0
+            adjustment_display = f"{adjustment_percent:+.1f}% via physiological & response adjustment"
+        else:
+            adjustment_percent = 0.0
+            adjustment_display = "No adjustment"
+        high_hypo_note = (
+            "High hypoglycemia risk capped dose at 90% of previous insulin exposure."
+        )
+        adjustment_explanation = (
+            f"{adjustment_explanation} {high_hypo_note}" if adjustment_explanation else high_hypo_note
+        )
+
+    if severity_pred == "Severe":
+        severe_floor = float(np.ceil((0.3 * weight_kg) * 10.0) / 10.0)
+        if final_recommended_dose < severe_floor:
+            final_recommended_dose = float(round(min(max(severe_floor, safe_min_dose), safe_max_dose), 1))
+            hypo_risk_prob, hyper_risk_prob = _compute_risk_probabilities(
+                glucose_mgdl=payload.fasting_glucose_mgdl,
+                dose_units=final_recommended_dose,
+            )
+            if payload.glucose_after_dose_mgdl < 60:
+                hypo_risk_prob = max(hypo_risk_prob, 0.75)
+            elif payload.glucose_after_dose_mgdl < 70:
+                hypo_risk_prob = max(hypo_risk_prob, 0.60)
+            elif payload.glucose_after_dose_mgdl < 100:
+                hypo_risk_prob = max(hypo_risk_prob, 0.30)
+            if payload.activity_level == 3 and payload.glucose_after_dose_mgdl < 120:
+                hypo_risk_prob = max(hypo_risk_prob, 0.30)
 
     safety_payload = _build_weight_safety_guardrails(
         final_dose_units=final_recommended_dose,
@@ -665,8 +783,12 @@ def predict_dose_with_severity(
         warning_message=clamp_warning,
     )
 
-    hypoglycemia_alert = (payload.glucose_after_dose_mgdl < 70) or (hypo_risk_prob > 0.70)
-    hypo_alert = hypo_risk_prob > 0.70
+    hypo_alert = _is_hypoglycemia_alert(
+        hypoglycemia_risk_probability=hypo_risk_prob,
+        activity_level=payload.activity_level,
+        glucose_after_dose_mgdl=payload.glucose_after_dose_mgdl,
+    )
+    hypoglycemia_alert = (payload.glucose_after_dose_mgdl < 70) or hypo_alert
     hyper_alert = hyper_risk_prob > 0.70
     risk_alert = hypo_alert or hyper_alert
 

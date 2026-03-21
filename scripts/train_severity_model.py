@@ -101,7 +101,7 @@ def train_and_evaluate() -> None:
     int_to_class = {i: c for c, i in class_to_int.items()}
     y_int = y.map(class_to_int).astype(int)
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train_full, X_test, y_train_full, y_test = train_test_split(
         X,
         y_int,
         test_size=0.2,
@@ -109,12 +109,32 @@ def train_and_evaluate() -> None:
         stratify=y_int,
     )
 
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train_full,
+        y_train_full,
+        test_size=0.15,
+        random_state=42,
+        stratify=y_train_full,
+    )
+
+    train_class_counts = np.bincount(y_train, minlength=3)
+    total_count = float(train_class_counts.sum())
+    class_weights = {
+        cls: total_count / (len(train_class_counts) * max(1.0, count))
+        for cls, count in enumerate(train_class_counts)
+    }
+    sample_weight = np.array([class_weights[int(label)] for label in y_train], dtype=float)
+
     model = XGBClassifier(
-        n_estimators=300,
-        max_depth=4,
-        learning_rate=0.05,
-        subsample=0.9,
-        colsample_bytree=0.9,
+        n_estimators=600,
+        max_depth=5,
+        learning_rate=0.03,
+        subsample=0.85,
+        colsample_bytree=0.85,
+        min_child_weight=2,
+        gamma=0.1,
+        reg_alpha=0.2,
+        reg_lambda=2.0,
         objective="multi:softprob",
         eval_metric="mlogloss",
         random_state=42,
@@ -122,7 +142,13 @@ def train_and_evaluate() -> None:
         num_class=3,
     )
 
-    model.fit(X_train, y_train)
+    model.fit(
+        X_train,
+        y_train,
+        sample_weight=sample_weight,
+        eval_set=[(X_val, y_val)],
+        verbose=False,
+    )
 
     # Predictions and evaluation
     y_pred_int = model.predict(X_test)

@@ -25,6 +25,13 @@ CONTRA_AVOID_GLP1 = "Avoid GLP-1 Receptor Agonists: underweight BMI"
 CONTRA_AVOID_AGGRESSIVE_INSULIN = (
     "Avoid aggressive insulin escalation: hypoglycemia risk signal"
 )
+CONTRA_AVOID_SGLT2_RENAL = (
+    "Avoid SGLT2 Inhibitors: renal impairment (creatinine > 1.8 mg/dL)"
+)
+CONTRA_AVOID_SGLT2_AKI_ELDERLY = (
+    "Avoid SGLT2 Inhibitors: high risk of AKI in elderly renal impairment"
+)
+DRUG_DPP4_RENAL = "DPP-4 Inhibitors (dose-adjusted)"
 
 
 @dataclass(frozen=True)
@@ -163,6 +170,16 @@ def recommend_drug(
         contraindications.append(CONTRA_AVOID_GLP1)
         if adjunct_drug == DRUG_GLP1:
             adjunct_drug = DRUG_DPP4
+
+    if creatinine > 1.8:
+        contraindications.append(CONTRA_AVOID_SGLT2_RENAL)
+        if DRUG_SGLT2 in adjunct_drug:
+            adjunct_drug = DRUG_DPP4_RENAL if creatinine > 2.0 else DRUG_DPP4
+
+    if creatinine > 2.0 and age > 65:
+        contraindications.append(CONTRA_AVOID_SGLT2_AKI_ELDERLY)
+        if DRUG_SGLT2 in adjunct_drug or "SGLT2" in adjunct_drug:
+            adjunct_drug = DRUG_DPP4_RENAL
 
     # Hypoglycemia contraindication must be tied only to explicit hypo signals.
     if hypoglycemia_risk_prob > 0.70 or glucose_after_dose < 70:

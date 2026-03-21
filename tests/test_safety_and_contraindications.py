@@ -48,8 +48,9 @@ def test_low_glucose_triggers_hypoglycemia_alert(client, prediction_payload) -> 
     assert response.status_code == 200, response.text
 
     body = response.json()
-    assert body["risk_alert"] is False
-    assert body["hypoglycemia_risk_probability"] < 0.70
+    assert body["hypoglycemia_alert"] is True
+    assert body["risk_alert"] is True
+    assert body["hypoglycemia_risk_probability"] >= 0.30
 
 
 def test_post_dose_below_70_applies_hypoglycemia_floor_without_alert(
@@ -69,7 +70,7 @@ def test_post_dose_below_70_applies_hypoglycemia_floor_without_alert(
     assert body["hypoglycemia_risk_probability"] >= 0.60
     assert body["hypoglycemia_risk_probability"] < 0.70
     assert body["hypoglycemia_alert"] is True
-    assert body["risk_alert"] is False
+    assert body["risk_alert"] is True
     assert "Recent post-dose hypoglycemia signal detected" in body["drug_recommendation"]["explanation"]
 
 

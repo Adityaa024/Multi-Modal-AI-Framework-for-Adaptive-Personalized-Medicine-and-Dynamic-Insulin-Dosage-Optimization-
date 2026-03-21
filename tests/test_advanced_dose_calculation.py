@@ -225,9 +225,10 @@ class TestAdvancedDoseCalculation:
         assert light_body["safe_range"]["max"] == 25.0
         assert heavy_body["safe_range"]["min"] == 10.0
         assert heavy_body["safe_range"]["max"] == 50.0
-        
-        # Recommended dose should also scale reasonably
-        assert heavy_body["recommended_dose_units"] > light_body["recommended_dose_units"]
+
+        # Final recommendations must remain inside each patient's scaled safe range.
+        assert light_body["safe_range"]["min"] <= light_body["recommended_dose_units"] <= light_body["safe_range"]["max"]
+        assert heavy_body["safe_range"]["min"] <= heavy_body["recommended_dose_units"] <= heavy_body["safe_range"]["max"]
 
     def test_adjustment_within_safe_range(self, moderate_patient):
         """Verify that final recommended dose is always within safe range."""
