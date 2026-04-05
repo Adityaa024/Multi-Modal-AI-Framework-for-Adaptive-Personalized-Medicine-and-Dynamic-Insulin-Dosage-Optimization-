@@ -1,4 +1,7 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import patients, predictions
 from app.core.config import config
@@ -22,6 +25,28 @@ def create_app() -> FastAPI:
             "to adaptive insulin dosage optimization in Type 2 diabetes "
             "management. Not for clinical use."
         ),
+    )
+
+    allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+    allowed_origins = [
+        origin.strip()
+        for origin in allowed_origins_env.split(",")
+        if origin.strip()
+    ]
+
+    if not allowed_origins:
+        # Local dev defaults when ALLOWED_ORIGINS is not set.
+        allowed_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Initialize database metadata. For a pure research scaffold we keep this

@@ -80,8 +80,17 @@ export type EvaluationDashboardResponse = {
   shap_summary: Array<{ feature: string; mean_abs_shap: number }>
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+
+function apiUrl(path: string): string {
+  if (!API_BASE) {
+    return path
+  }
+  return `${API_BASE}${path}`
+}
+
 export async function predictDose(input: PatientInput): Promise<PredictDoseResponse> {
-  const res = await fetch('/api/v1/predictions/predict-dose', {
+  const res = await fetch(apiUrl('/api/v1/predictions/predict-dose'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -96,7 +105,7 @@ export async function predictDose(input: PatientInput): Promise<PredictDoseRespo
 }
 
 export async function getEvaluationDashboard(): Promise<EvaluationDashboardResponse> {
-  const res = await fetch('/api/v1/predictions/evaluation-dashboard')
+  const res = await fetch(apiUrl('/api/v1/predictions/evaluation-dashboard'))
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')

@@ -177,3 +177,75 @@ Stress test:
 
 This project is strictly for research and educational use and must not be used for real-world clinical decision-making without formal clinical validation, regulatory clearance, and medical oversight.
 
+## Deploy on Render
+
+This repository is now deployment-ready for Render with:
+- backend CORS configured via `ALLOWED_ORIGINS` in `app/main.py`,
+- frontend API base URL configured via `VITE_API_BASE_URL` in `frontend/src/lib/api.ts`,
+- infrastructure blueprint in `render.yaml`.
+
+### Option A: Blueprint deploy (recommended)
+
+1. Push this repository to GitHub.
+2. In Render, choose **New +** -> **Blueprint**.
+3. Select this repository.
+4. Render reads `render.yaml` and creates:
+  - `project5-api` (Python web service)
+  - `project5-frontend` (static site)
+5. Update service names/URLs in env vars after first deploy if Render assigns different names:
+  - backend `ALLOWED_ORIGINS` should equal your frontend URL,
+  - frontend `VITE_API_BASE_URL` should equal your backend URL.
+6. Trigger redeploy for both services after env var updates.
+
+### Option B: Manual deploy
+
+Create two Render services manually:
+
+Backend (`project5-api`):
+- Environment: Python
+- Build Command:
+
+```bash
+pip install -r requirements.txt
+python scripts/generate_synthetic_t2d_data.py
+python scripts/train_severity_model.py
+python scripts/train_dosage_model.py
+```
+
+- Start Command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+- Health Check Path: `/docs`
+- Environment variables:
+  - `PYTHON_VERSION=3.11.11`
+  - `ALLOWED_ORIGINS=https://<your-frontend>.onrender.com`
+
+Frontend (`project5-frontend` static site):
+- Root Directory: `frontend`
+- Build Command:
+
+```bash
+npm ci && npm run build
+```
+
+- Publish Directory: `dist`
+- Environment variables:
+  - `VITE_API_BASE_URL=https://<your-backend>.onrender.com`
+
+### Post-deploy verification
+
+1. Open frontend URL.
+2. Submit a prediction from the UI.
+3. Confirm browser network requests are sent to:
+  - `https://<backend>/api/v1/predictions/predict-dose`
+4. Confirm backend docs are live at:
+  - `https://<backend>/docs`
+
+### Notes
+
+- For local development, keep `VITE_API_BASE_URL` empty (`frontend/.env.example`) so Vite proxy continues to work.
+- SQLite is file-based (`data/app.db`). If persistent DB storage is required across redeploys, attach a Render disk and map it to the app data path.
+
