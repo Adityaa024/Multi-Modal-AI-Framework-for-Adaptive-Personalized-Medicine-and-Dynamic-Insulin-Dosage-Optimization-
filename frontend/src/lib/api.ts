@@ -41,6 +41,64 @@ export type DrugRecommendation = {
   explanation: string
 }
 
+export type ConformalPredictionInterval = {
+  lower_units: number
+  upper_units: number
+  confidence_level: number
+}
+
+export type OodMetric = {
+  is_in_distribution: boolean
+  trust_score_percent: number
+  mahalanobis_distance: number
+  threshold: number
+  status: string
+}
+
+export type SafetyAuditStep = {
+  step_name: string
+  dose_after_step: number
+  change_units: number
+  rationale: string
+  guideline_reference: string
+}
+
+export type ParkesDataPoint = {
+  reference_dose: number
+  predicted_dose: number
+  zone: string
+}
+
+export type ParkesZoneSummary = {
+  zone: string
+  percentage: number
+  clinical_risk: string
+}
+
+export type ParkesErrorGridSummary = {
+  total_points: number
+  zone_a_percent: number
+  zone_b_percent: number
+  zone_c_percent: number
+  zone_d_percent: number
+  zone_e_percent: number
+  clinically_acceptable_percent: number
+  zones: ParkesZoneSummary[]
+  sample_points: ParkesDataPoint[]
+}
+
+export type CohortDivergenceMetric = {
+  feature_name: string
+  synthetic_mean: number
+  synthetic_std: number
+  nhanes_benchmark_mean: number
+  nhanes_benchmark_std: number
+  wasserstein_distance: number
+  jensen_shannon_divergence: number
+  p_value: number
+  alignment_status: string
+}
+
 export type PredictDoseResponse = {
   severity: 'Mild' | 'Moderate' | 'Severe' | string
   feature_mode: 'structured' | 'structured_labs' | 'full'
@@ -60,6 +118,9 @@ export type PredictDoseResponse = {
   safe_range: SafeRange
   safety: SafetyGuardrails
   drug_recommendation: DrugRecommendation
+  conformal_interval?: ConformalPredictionInterval
+  ood_metric?: OodMetric
+  safety_audit_trail?: SafetyAuditStep[]
 }
 
 export type RocCurveSeries = {
@@ -80,6 +141,8 @@ export type EvaluationDashboardResponse = {
   shap_summary: Array<{ feature: string; mean_abs_shap: number }>
   calibration_curve?: Array<{ predicted_probability: number; observed_frequency: number }>
   fairness_metrics?: Array<{ group_name: string; mae: number }>
+  parkes_error_grid?: ParkesErrorGridSummary
+  cohort_divergence?: CohortDivergenceMetric[]
 }
 
 export type TrendPoint = {

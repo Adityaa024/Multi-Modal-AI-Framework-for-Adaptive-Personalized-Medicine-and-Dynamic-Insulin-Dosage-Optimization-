@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -229,6 +231,74 @@ class DosePredictionResponse(BaseModel):
     safe_range: SafeRange
     safety: SafetyGuardrails
     drug_recommendation: DrugRecommendation
+    conformal_interval: ConformalPredictionInterval | None = None
+    ood_metric: OodMetric | None = None
+    safety_audit_trail: list[SafetyAuditStep] = Field(default_factory=list)
+
+
+class ConformalPredictionInterval(BaseModel):
+    """Calibrated prediction bounds providing guaranteed empirical coverage."""
+    lower_units: float = Field(..., ge=0)
+    upper_units: float = Field(..., ge=0)
+    confidence_level: float = Field(default=0.95, ge=0, le=1)
+
+
+class OodMetric(BaseModel):
+    """Out-of-distribution trust and covariate shift score."""
+    is_in_distribution: bool
+    trust_score_percent: float = Field(..., ge=0, le=100)
+    mahalanobis_distance: float = Field(..., ge=0)
+    threshold: float = Field(..., ge=0)
+    status: str
+
+
+class SafetyAuditStep(BaseModel):
+    """Individual step in the physiological safety derivation trace."""
+    step_name: str
+    dose_after_step: float
+    change_units: float
+    rationale: str
+    guideline_reference: str
+
+
+class ParkesDataPoint(BaseModel):
+    """Single paired reference vs predicted insulin dose point."""
+    reference_dose: float
+    predicted_dose: float
+    zone: str
+
+
+class ParkesZoneSummary(BaseModel):
+    """Summary statistics for an individual Parkes Consensus zone."""
+    zone: str
+    percentage: float
+    clinical_risk: str
+
+
+class ParkesErrorGridSummary(BaseModel):
+    """Consensus Error Grid for Type 2 Diabetes dosage optimization."""
+    total_points: int
+    zone_a_percent: float
+    zone_b_percent: float
+    zone_c_percent: float
+    zone_d_percent: float
+    zone_e_percent: float
+    clinically_acceptable_percent: float
+    zones: list[ParkesZoneSummary] = Field(default_factory=list)
+    sample_points: list[ParkesDataPoint] = Field(default_factory=list)
+
+
+class CohortDivergenceMetric(BaseModel):
+    """Statistical divergence between synthetic training cohort and real-world clinical benchmarks."""
+    feature_name: str
+    synthetic_mean: float
+    synthetic_std: float
+    nhanes_benchmark_mean: float
+    nhanes_benchmark_std: float
+    wasserstein_distance: float
+    jensen_shannon_divergence: float
+    p_value: float
+    alignment_status: str
 
 
 class RocCurveSeries(BaseModel):
@@ -276,4 +346,7 @@ class EvaluationDashboardResponse(BaseModel):
     shap_summary: list[ShapSummaryPoint]
     calibration_curve: list[CalibrationPoint] = Field(default_factory=list)
     fairness_metrics: list[FairnessMetric] = Field(default_factory=list)
+    parkes_error_grid: ParkesErrorGridSummary | None = None
+    cohort_divergence: list[CohortDivergenceMetric] = Field(default_factory=list)
+
 

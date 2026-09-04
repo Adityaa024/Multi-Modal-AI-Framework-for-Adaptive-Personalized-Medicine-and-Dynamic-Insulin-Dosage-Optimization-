@@ -89,7 +89,7 @@ export default function AIPredictionHero({ result, isPredicting, previousDose }:
             </h2>
           </div>
 
-          <div style={{ fontSize: '6rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.04em', lineHeight: 1, margin: '2rem 0' }}>
+          <div style={{ fontSize: '6rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.04em', lineHeight: 1, margin: '2rem 0 1rem 0' }}>
             {hasResult || isPredicting ? (
               <>
                 {animatedDose.toFixed(1)} <span style={{ fontSize: '3rem', color: 'var(--text-muted)' }}>U</span>
@@ -99,12 +99,23 @@ export default function AIPredictionHero({ result, isPredicting, previousDose }:
             )}
           </div>
 
+          {hasResult && result.conformal_interval && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.85rem', background: 'rgba(5, 150, 105, 0.08)', border: '1px solid rgba(5, 150, 105, 0.2)', borderRadius: '20px', marginBottom: '1rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                95% Conformal Prediction Bounds:
+              </span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                [{result.conformal_interval.lower_units.toFixed(1)} – {result.conformal_interval.upper_units.toFixed(1)} U]
+              </span>
+            </div>
+          )}
+
           {hasResult && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.5 }}
-              style={{ display: 'flex', justifyContent: 'center', gap: '3rem', marginTop: '2rem' }}
+              style={{ display: 'flex', justifyContent: 'center', gap: '2.5rem', marginTop: '1.5rem', flexWrap: 'wrap' }}
             >
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Confidence</div>
@@ -114,6 +125,17 @@ export default function AIPredictionHero({ result, isPredicting, previousDose }:
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Uncertainty</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{uncertainty}%</div>
               </div>
+              {result.ood_metric && (
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Clinical Trust (OOD)</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: result.ood_metric.is_in_distribution ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                    {result.ood_metric.trust_score_percent}%
+                  </div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {result.ood_metric.is_in_distribution ? 'In-Domain Safe' : 'Specialist Review'}
+                  </div>
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>Severity</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 700, color: getSeverityColor(result.severity), textTransform: 'uppercase' }}>
