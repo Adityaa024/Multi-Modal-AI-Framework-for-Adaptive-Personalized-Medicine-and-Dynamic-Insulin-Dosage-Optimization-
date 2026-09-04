@@ -11,6 +11,8 @@ import DoseTimeline from './DoseTimeline'
 import PatientInputForm from './PatientInputForm'
 import type { TrendPoint } from "../../lib/api"
 import { Edit3, Download, Printer } from 'lucide-react'
+import OodTrustPanel from './OodTrustPanel'
+import AdverseEventPanel from './AdverseEventPanel'
 
 type Props = {
   form: PatientInput
@@ -165,6 +167,8 @@ export default function PredictionView({ form, setForm, result, isPredicting, er
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
             <RiskProfile result={result} />
+            <OodTrustPanel result={result} form={form} />
+            <AdverseEventPanel result={result} form={form} />
             <SeverityDistribution result={result} />
             <TreatmentRecommendation result={result} />
           </div>

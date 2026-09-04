@@ -396,13 +396,36 @@ export default function EvaluationView({ data, loading, error }: Props) {
 
         {/* Subgroup Fairness & Bias Audit */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Algorithmic Fairness Audit
-            </h3>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              Mean Absolute Error (MAE) evaluated across demographic subgroups
-            </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Algorithmic Fairness Audit
+              </h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Mean Absolute Error (MAE) evaluated across demographic subgroups
+              </p>
+            </div>
+            {data.fairness_metrics && data.fairness_metrics.length > 0 && (() => {
+              const maes = data.fairness_metrics.map(fm => fm.mae);
+              const maxDisparity = Math.max(...maes) - Math.min(...maes);
+              const isFair = maxDisparity < 0.5;
+              return (
+                <span style={{ 
+                  fontSize: '0.6875rem', 
+                  fontWeight: 700, 
+                  padding: '0.25rem 0.5rem', 
+                  background: isFair ? 'rgba(5, 150, 105, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
+                  color: isFair ? 'var(--accent-success)' : 'var(--accent-warning)', 
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}>
+                  {isFair ? <CheckCircle size={12} /> : null}
+                  Max Disparity: {maxDisparity.toFixed(2)} U
+                </span>
+              );
+            })()}
           </div>
           
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
@@ -417,7 +440,7 @@ export default function EvaluationView({ data, loading, error }: Props) {
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, (fm.mae / 4) * 100)}%` }} // Normalized to max expected MAE of ~4 for visuals
-                      transition={{ delay: idx * 0.1, duration: 0.8, ease: 'easeOut' }}
+                      transition={{ delay: idx * 0.05, duration: 0.6, ease: 'easeOut' }}
                       style={{
                         height: '100%',
                         borderRadius: '999px',
@@ -434,7 +457,7 @@ export default function EvaluationView({ data, loading, error }: Props) {
             )}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)', lineHeight: 1.4 }}>
-            Ensures consistent error rates across age, sex, and BMI categories to confirm absence of systemic demographic bias.
+            Ensures consistent error rates across demographic and physiological subgroups to confirm absence of systemic bias.
           </div>
         </div>
       </div>

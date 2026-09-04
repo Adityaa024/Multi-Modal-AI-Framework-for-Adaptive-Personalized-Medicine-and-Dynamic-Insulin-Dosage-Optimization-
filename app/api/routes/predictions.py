@@ -8,6 +8,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import confusion_matrix, mean_absolute_error, mean_squared_error, roc_auc_score, roc_curve
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -498,24 +499,54 @@ def _compute_evaluation_dashboard_cached() -> EvaluationDashboardResponse:
         for i in top_idx
     ]
 
-    # Generate mock calibration curve data for research UI demonstration
-    # In a fully implemented backend, this would use sklearn.calibration.calibration_curve
-    mock_calibration = [
-        CalibrationPoint(predicted_probability=0.1, observed_frequency=0.12),
-        CalibrationPoint(predicted_probability=0.3, observed_frequency=0.28),
-        CalibrationPoint(predicted_probability=0.5, observed_frequency=0.47),
-        CalibrationPoint(predicted_probability=0.7, observed_frequency=0.73),
-        CalibrationPoint(predicted_probability=0.9, observed_frequency=0.88),
+    # Compute real calibration curve for Moderate/Severe vs Mild severity
+    y_true_binary = (y_true_int > 0).astype(int)
+    y_prob_positive = severity_proba[:, 1] + severity_proba[:, 2] if severity_proba.shape[1] > 2 else severity_proba[:, 1]
+    
+    prob_true, prob_pred = calibration_curve(y_true_binary, y_prob_positive, n_bins=10)
+    real_calibration = [
+        CalibrationPoint(predicted_probability=float(pp), observed_frequency=float(pt))
+        for pp, pt in zip(prob_pred, prob_true)
     ]
 
-    # Generate mock subgroup fairness metrics for research UI demonstration
-    mock_fairness = [
-        FairnessMetric(group_name="Age < 50", mae=2.1),
-        FairnessMetric(group_name="Age 50-65", mae=2.3),
-        FairnessMetric(group_name="Age > 65", mae=2.4),
-        FairnessMetric(group_name="BMI Normal", mae=2.1),
-        FairnessMetric(group_name="BMI Obese", mae=2.3),
-    ]
+    # Compute real subgroup fairness metrics based on dose prediction MAE
+    real_fairness = []
+    
+    # Age Subgroups
+    for group, mask in [
+        ("Age < 50", df["age"] < 50),
+        ("Age 50-65", (df["age"] >= 50) & (df["age"] <= 65)),
+        ("Age > 65", df["age"] > 65),
+    ]:
+        if mask.any():
+            real_fairness.append(FairnessMetric(group_name=group, mae=float(mean_absolute_error(y_dose[mask], y_dose_pred[mask]))))
+            
+    # BMI Subgroups
+    for group, mask in [
+        ("BMI Normal (<25)", df["bmi"] < 25),
+        ("BMI Overweight (25-30)", (df["bmi"] >= 25) & (df["bmi"] <= 30)),
+        ("BMI Obese (>30)", df["bmi"] > 30),
+    ]:
+        if mask.any():
+            real_fairness.append(FairnessMetric(group_name=group, mae=float(mean_absolute_error(y_dose[mask], y_dose_pred[mask]))))
+
+    # Renal Subgroups
+    for group, mask in [
+        ("Cr Normal (<1.2)", df["creatinine_mgdl"] < 1.2),
+        ("Cr Impaired (1.2-2.0)", (df["creatinine_mgdl"] >= 1.2) & (df["creatinine_mgdl"] <= 2.0)),
+        ("Cr Severe (>2.0)", df["creatinine_mgdl"] > 2.0),
+    ]:
+        if mask.any():
+            real_fairness.append(FairnessMetric(group_name=group, mae=float(mean_absolute_error(y_dose[mask], y_dose_pred[mask]))))
+
+    # HbA1c Severity Subgroups
+    for group, mask in [
+        ("HbA1c Mild (<7.5%)", df["hba1c"] < 7.5),
+        ("HbA1c Moderate (7.5-9.5%)", (df["hba1c"] >= 7.5) & (df["hba1c"] <= 9.5)),
+        ("HbA1c Severe (>9.5%)", df["hba1c"] > 9.5),
+    ]:
+        if mask.any():
+            real_fairness.append(FairnessMetric(group_name=group, mae=float(mean_absolute_error(y_dose[mask], y_dose_pred[mask]))))
 
     # Parkes Consensus Error Grid (Type 2 Diabetes)
     parkes_sample_points = [
@@ -630,8 +661,8 @@ def _compute_evaluation_dashboard_cached() -> EvaluationDashboardResponse:
             matrix=[[int(v) for v in row] for row in cm.tolist()],
         ),
         shap_summary=shap_summary,
-        calibration_curve=mock_calibration,
-        fairness_metrics=mock_fairness,
+        calibration_curve=real_calibration,
+        fairness_metrics=real_fairness,
         parkes_error_grid=parkes_summary,
         cohort_divergence=cohort_divergence,
     )
