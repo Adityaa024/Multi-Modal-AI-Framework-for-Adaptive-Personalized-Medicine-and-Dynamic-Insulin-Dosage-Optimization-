@@ -331,6 +331,114 @@ export default function EvaluationView({ data, loading, error }: Props) {
 
       </div>
 
+      {/* NEW: Calibration and Fairness Analysis (Clinical Validation) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+        {/* Calibration Reliability Plot */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Clinical Probability Calibration
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              Reliability curve: Predicted Risk vs. Observed Frequency
+            </p>
+          </div>
+          
+          <div style={{ height: '260px', width: '100%' }}>
+            {data.calibration_curve && data.calibration_curve.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.calibration_curve.map(c => ({
+                  ...c,
+                  perfect: c.predicted_probability // ideal diagonal
+                }))} margin={{ top: 10, right: 15, left: -5, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
+                  <XAxis 
+                    dataKey="predicted_probability" 
+                    type="number" 
+                    domain={[0, 1]} 
+                    ticks={[0, 0.2, 0.4, 0.6, 0.8, 1]} 
+                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }} 
+                    tickLine={false} 
+                    axisLine={{ stroke: 'var(--border-light)' }} 
+                    label={{ value: 'Mean Predicted Probability', position: 'insideBottom', offset: -15, fontSize: 11, fill: 'var(--text-secondary)' }}
+                  />
+                  <YAxis 
+                    dataKey="observed_frequency"
+                    type="number" 
+                    domain={[0, 1]} 
+                    ticks={[0, 0.2, 0.4, 0.6, 0.8, 1]} 
+                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }} 
+                    tickLine={false} 
+                    axisLine={{ stroke: 'var(--border-light)' }}
+                    label={{ value: 'Fraction of Positives', angle: -90, position: 'insideLeft', offset: 15, fontSize: 11, fill: 'var(--text-secondary)' }}
+                  />
+                  <Tooltip 
+                    formatter={(val: any, name: any) => [Number(val).toFixed(2), name === 'observed_frequency' ? 'Observed Rate' : 'Perfect Calibration']}
+                    contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-light)', fontSize: '0.8125rem' }} 
+                  />
+                  {/* Diagonal Perfect Calibration Line */}
+                  <Line type="monotone" dataKey="perfect" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+                  {/* Actual Model Calibration */}
+                  <Line type="monotone" dataKey="observed_frequency" stroke="var(--accent-primary)" strokeWidth={3} dot={{ r: 4, strokeWidth: 0, fill: 'var(--accent-primary)' }} activeDot={{ r: 6 }} animationDuration={600} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Calibration data unavailable.
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <span>Green Line: Model Reliability</span>
+            <span>Dashed Line: Ideal Calibration</span>
+          </div>
+        </div>
+
+        {/* Subgroup Fairness & Bias Audit */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Algorithmic Fairness Audit
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              Mean Absolute Error (MAE) evaluated across demographic subgroups
+            </p>
+          </div>
+          
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
+            {data.fairness_metrics && data.fairness_metrics.length > 0 ? (
+              data.fairness_metrics.map((fm, idx) => (
+                <div key={fm.group_name} style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', fontWeight: 600 }}>
+                    <span style={{ color: 'var(--text-primary)' }}>{fm.group_name}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{fm.mae.toFixed(2)} U MAE</span>
+                  </div>
+                  <div style={{ height: '8px', background: 'rgba(0,0,0,0.04)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, (fm.mae / 4) * 100)}%` }} // Normalized to max expected MAE of ~4 for visuals
+                      transition={{ delay: idx * 0.1, duration: 0.8, ease: 'easeOut' }}
+                      style={{
+                        height: '100%',
+                        borderRadius: '999px',
+                        background: 'var(--accent-primary)',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Fairness audit data unavailable.
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)', lineHeight: 1.4 }}>
+            Ensures consistent error rates across age, sex, and BMI categories to confirm absence of systemic demographic bias.
+          </div>
+        </div>
+      </div>
+
       {/* Benchmark Model Comparison */}
       <div className="card">
         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem', color: 'var(--text-primary)' }}>

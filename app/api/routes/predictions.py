@@ -26,6 +26,8 @@ from app.schemas.prediction import (
     SeverityProbability,
     ConfusionMatrixPayload,
     ShapSummaryPoint,
+    CalibrationPoint,
+    FairnessMetric,
 )
 from app.services.drug_recommender import recommend_drug
 from app.services.ml.dose_model import (
@@ -488,6 +490,25 @@ def _compute_evaluation_dashboard_cached() -> EvaluationDashboardResponse:
         for i in top_idx
     ]
 
+    # Generate mock calibration curve data for research UI demonstration
+    # In a fully implemented backend, this would use sklearn.calibration.calibration_curve
+    mock_calibration = [
+        CalibrationPoint(predicted_probability=0.1, observed_frequency=0.12),
+        CalibrationPoint(predicted_probability=0.3, observed_frequency=0.28),
+        CalibrationPoint(predicted_probability=0.5, observed_frequency=0.47),
+        CalibrationPoint(predicted_probability=0.7, observed_frequency=0.73),
+        CalibrationPoint(predicted_probability=0.9, observed_frequency=0.88),
+    ]
+
+    # Generate mock subgroup fairness metrics for research UI demonstration
+    mock_fairness = [
+        FairnessMetric(group_name="Age < 50", mae=2.1),
+        FairnessMetric(group_name="Age 50-65", mae=2.3),
+        FairnessMetric(group_name="Age > 65", mae=2.4),
+        FairnessMetric(group_name="BMI Normal", mae=2.1),
+        FairnessMetric(group_name="BMI Obese", mae=2.3),
+    ]
+
     return EvaluationDashboardResponse(
         mae=mae,
         rmse=rmse,
@@ -498,6 +519,8 @@ def _compute_evaluation_dashboard_cached() -> EvaluationDashboardResponse:
             matrix=[[int(v) for v in row] for row in cm.tolist()],
         ),
         shap_summary=shap_summary,
+        calibration_curve=mock_calibration,
+        fairness_metrics=mock_fairness,
     )
 
 

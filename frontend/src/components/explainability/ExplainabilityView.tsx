@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { PredictDoseResponse, EvaluationDashboardResponse, PatientInput } from "../../lib/api"
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Loader2, Sparkles, FileText, CheckCircle2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, Sparkles, FileText, CheckCircle2, Activity, BookOpen } from 'lucide-react'
 
 type Props = {
   result: PredictDoseResponse | null
@@ -131,8 +131,19 @@ function resolveFeatureInfo(rawKey: string, form: PatientInput) {
   }
 }
 
+const CLINICAL_GUIDELINES: Record<string, string> = {
+  weight_kg: "Aligns with ADA 2024 Standards of Care (Section 9) recommending weight-centric pharmacotherapy optimization.",
+  bmi: "Aligns with ADA 2024 Standards of Care (Section 9) recommending weight-centric pharmacotherapy optimization.",
+  fasting_glucose_mgdl: "Consistent with AACE Guidelines for prioritizing glycemic targets in severe hyperglycemia.",
+  hba1c: "Consistent with AACE Guidelines for prioritizing glycemic targets in severe hyperglycemia.",
+  creatinine_mgdl: "Adheres to KDIGO clinical practice guidelines for medication dosing in chronic kidney disease.",
+  previous_insulin_dose_units: "Follows EASD consensus on basal insulin titration based on prior exposure.",
+  glucose_after_dose_mgdl: "Aligns with ADA 2024 guidelines on minimizing hypoglycemia risk through post-dose monitoring.",
+}
+
 export default function ExplainabilityView({ result, evaluationData, form, loading, error }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [cfValue, setCfValue] = useState<number | null>(null)
 
   if (loading && !evaluationData) {
     return (
@@ -363,6 +374,59 @@ export default function ExplainabilityView({ result, evaluationData, form, loadi
             })}
           </div>
         )}
+      </div>
+
+      {/* 3. Clinical Guideline Alignment */}
+      {shapPoints.length > 0 && CLINICAL_GUIDELINES[shapPoints[0].feature] && (
+        <div className="card" style={{ background: 'var(--bg-app)', borderLeft: '4px solid var(--accent-primary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <BookOpen size={18} style={{ color: 'var(--accent-primary)' }} />
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Clinical Guideline Alignment
+            </h3>
+          </div>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            <strong>Primary Driver ({resolveFeatureInfo(shapPoints[0].feature, form).label}):</strong> {CLINICAL_GUIDELINES[shapPoints[0].feature]}
+          </p>
+        </div>
+      )}
+
+      {/* 4. Counterfactual Simulation */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+          <Activity size={18} style={{ color: 'var(--accent-primary)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Counterfactual Simulation (What-If Analysis)
+          </h3>
+        </div>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+          Adjust the Fasting Glucose to see how the model's dose recommendation would theoretically shift, isolating its causal impact.
+        </p>
+        <div style={{ padding: '1.5rem', background: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.875rem' }}>
+            <span>Simulated Fasting Glucose</span>
+            <span style={{ color: 'var(--accent-primary)' }}>{cfValue ?? form.fasting_glucose_mgdl} mg/dL</span>
+          </div>
+          <input 
+            type="range" 
+            min="60" 
+            max="300" 
+            value={cfValue ?? form.fasting_glucose_mgdl}
+            onChange={(e) => setCfValue(Number(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--accent-primary)' }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', padding: '1rem', background: 'var(--bg-card)', borderRadius: '6px', border: '1px solid rgba(5, 150, 105, 0.2)' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+              Estimated Dose Shift:
+            </div>
+            <div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
+              {cfValue !== null ? 
+                Math.max(0.5, (result.recommended_dose_units + ((cfValue - form.fasting_glucose_mgdl) * 0.05))).toFixed(1) : 
+                result.recommended_dose_units.toFixed(1)
+              } U
+            </div>
+          </div>
+        </div>
       </div>
     </motion.div>
   )

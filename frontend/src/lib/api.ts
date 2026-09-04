@@ -78,6 +78,8 @@ export type EvaluationDashboardResponse = {
     matrix: number[][]
   }
   shap_summary: Array<{ feature: string; mean_abs_shap: number }>
+  calibration_curve?: Array<{ predicted_probability: number; observed_frequency: number }>
+  fairness_metrics?: Array<{ group_name: string; mae: number }>
 }
 
 export type TrendPoint = {

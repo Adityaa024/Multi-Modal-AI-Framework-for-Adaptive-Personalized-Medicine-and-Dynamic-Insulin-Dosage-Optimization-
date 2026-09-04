@@ -253,6 +253,18 @@ class ShapSummaryPoint(BaseModel):
     mean_abs_shap: float = Field(..., ge=0)
 
 
+class CalibrationPoint(BaseModel):
+    """Point on a calibration curve for reliability analysis."""
+    predicted_probability: float = Field(..., ge=0, le=1)
+    observed_frequency: float = Field(..., ge=0, le=1)
+
+
+class FairnessMetric(BaseModel):
+    """Subgroup metric for fairness and bias auditing."""
+    group_name: str
+    mae: float = Field(..., ge=0)
+
+
 class EvaluationDashboardResponse(BaseModel):
     """Aggregate offline evaluation artifacts for the dashboard tab."""
 
@@ -262,4 +274,6 @@ class EvaluationDashboardResponse(BaseModel):
     roc_curves: list[RocCurveSeries]
     confusion_matrix: ConfusionMatrixPayload
     shap_summary: list[ShapSummaryPoint]
+    calibration_curve: list[CalibrationPoint] = Field(default_factory=list)
+    fairness_metrics: list[FairnessMetric] = Field(default_factory=list)
 
