@@ -1,5 +1,7 @@
-import { Sparkles, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Sparkles, Loader2, FileText, Printer } from 'lucide-react'
 import type { PredictDoseResponse } from "../../lib/api"
+import TripodProtocolModal from '../protocol/TripodProtocolModal'
 
 type Props = {
   onPredict: () => void
@@ -8,6 +10,7 @@ type Props = {
 }
 
 export default function TopHeader({ onPredict, loading, primaryResult }: Props) {
+  const [isProtocolOpen, setIsProtocolOpen] = useState(false)
   const getSeverityColor = (sev?: string) => {
     if (!sev) return 'transparent'
     const s = sev.toLowerCase()
@@ -55,7 +58,55 @@ export default function TopHeader({ onPredict, loading, primaryResult }: Props) 
         )}
       </div>
 
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem' }}>
+        <button
+          onClick={() => setIsProtocolOpen(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            backgroundColor: 'var(--bg-card)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-light)',
+            padding: '0.45rem 0.85rem',
+            borderRadius: '8px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+          }}
+          title="View TRIPOD+AI Methodological Protocol"
+        >
+          <FileText size={14} style={{ color: 'var(--accent-primary)' }} />
+          <span>TRIPOD+AI Protocol</span>
+        </button>
+
+        {primaryResult && (
+          <button
+            onClick={() => window.print()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              backgroundColor: 'var(--bg-card)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-light)',
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+            }}
+            title="Print or Export Clinical Case Summary"
+          >
+            <Printer size={14} />
+            <span>Export Dossier</span>
+          </button>
+        )}
+
         <button
           onClick={onPredict}
           disabled={loading}
@@ -91,6 +142,11 @@ export default function TopHeader({ onPredict, loading, primaryResult }: Props) 
           {loading ? 'Analyzing...' : 'Predict'}
         </button>
       </div>
+
+      <TripodProtocolModal 
+        isOpen={isProtocolOpen} 
+        onClose={() => setIsProtocolOpen(false)} 
+      />
     </header>
   )
 }

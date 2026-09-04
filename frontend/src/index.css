@@ -252,3 +252,28 @@ h1, h2, h3, h4, h5, h6 {
   fill: var(--text-secondary) !important;
   font-family: var(--font-sans);
 }
+
+/* Print Styles for Clinical Dossier */
+@media print {
+  .sidebar, .topbar button, .topbar .animate-soft-pulse {
+    display: none !important;
+  }
+  .main-area {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+  .topbar {
+    position: static !important;
+    border-bottom: 2px solid #111827 !important;
+  }
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #d1d5db !important;
+    break-inside: avoid;
+  }
+}
+
