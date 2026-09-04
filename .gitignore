@@ -6,3 +6,6 @@ __pycache__/
 results.csv
 errors.csv
 test_results.txt
+.coverage
+htmlcov/
+.pytest_cache/
