@@ -127,7 +127,7 @@ def _prepare_severity_feature_vector(payload: DosePredictionPatientInput) -> np.
 
     bmi = payload.bmi
     if bmi is None:
-        height_m = payload.height_cm / 100.0
+        height_m = max(payload.height_cm / 100.0, 0.01)  # Prevent division by zero
         bmi = payload.weight_kg / (height_m**2)
 
     return np.array(
@@ -761,7 +761,14 @@ def predict_dose_with_severity(
     logger.debug("Ablation mode=%s dosage_features=%s", payload.feature_mode, masked_dosage_features.tolist())
 
     # Severity prediction
-    severity_loaded = _load_pickle_model(_SEVERITY_MODEL_PATH)
+    try:
+        severity_loaded = _load_pickle_model(_SEVERITY_MODEL_PATH)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail="Severity model is currently unavailable."
+        ) from exc
+        
     severity_model, int_to_class, _class_order = _unwrap_severity_model(severity_loaded)
     severity_model_input = _to_model_input_frame(masked_severity_features, _SEVERITY_FEATURE_NAMES)
 
@@ -792,7 +799,14 @@ def predict_dose_with_severity(
     }
 
     # Dosage prediction and advanced physiological + treatment-response adjustment
-    dosage_loaded = _load_pickle_model(_DOSAGE_MODEL_PATH)
+    try:
+        dosage_loaded = _load_pickle_model(_DOSAGE_MODEL_PATH)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail="Dosage model is currently unavailable."
+        ) from exc
+        
     dosage_model, _dosage_feature_names = _unwrap_dosage_model(dosage_loaded)
     dosage_model_input = _to_model_input_frame(masked_dosage_features, _DOSAGE_FEATURE_NAMES)
     raw_model_dose_units = float(dosage_model.predict(dosage_model_input)[0])
@@ -1019,12 +1033,17 @@ def predict_dose_with_severity(
                 patient_id=patient.id,
                 timestamp=datetime.now(timezone.utc),
                 glucose_mgdl=payload.fasting_glucose_mgdl,
-                glucose_previous_mgdl=payload.fasting_glucose_mgdl,
+                glucose_previous_mgdl=payload.glucose_after_dose_mgdl,
                 insulin_units=final_recommended_dose,
                 context_label=f"predict-dose (severity: {severity_pred})",
             )
             db.add(history_entry)
             db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient with id={payload.patient_id} not found."
+            )
 
     # Conformal Prediction 95% Confidence Interval
     conformal_lower = max(0.0, float(round(final_recommended_dose - 2.2, 1)))
@@ -1064,8 +1083,8 @@ def predict_dose_with_severity(
         ),
         SafetyAuditStep(
             step_name="2. Weight-Based TDD Boundary Clamp",
-            dose_after_step=float(round(min(safe_max_dose, max(safe_min_dose, ml_dose_rounded)), 1)),
-            change_units=float(round(min(safe_max_dose, max(safe_min_dose, ml_dose_rounded)) - ml_dose_rounded, 1)),
+            dose_after_step=float(round(min(safe_max_dose, max(safe_min_dose, adaptive_rule_dose)), 1)),
+            change_units=float(round(min(safe_max_dose, max(safe_min_dose, adaptive_rule_dose)) - adaptive_rule_dose, 1)),
             rationale=f"Bounded to safe outpatient basal range ({safe_min_dose:.1f}–{safe_max_dose:.1f} U/day)",
             guideline_reference="ADA 2024 Standards of Care (Section 9)",
         ),

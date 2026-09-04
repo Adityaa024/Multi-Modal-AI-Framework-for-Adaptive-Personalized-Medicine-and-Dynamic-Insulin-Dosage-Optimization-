@@ -20,7 +20,6 @@ client = TestClient(app)
 def mild_patient():
     """Fixture for a mild diabetes patient (72 kg)."""
     return {
-        "patient_id": 1,
         "age": 45,
         "weight_kg": 72.0,
         "height_cm": 175.0,
@@ -40,7 +39,6 @@ def mild_patient():
 def moderate_patient():
     """Fixture for a moderate diabetes patient (80 kg)."""
     return {
-        "patient_id": 2,
         "age": 55,
         "weight_kg": 80.0,
         "height_cm": 178.0,
@@ -60,7 +58,6 @@ def moderate_patient():
 def severe_patient_poor_control():
     """Fixture for severe diabetes patient with poor glycemic control after dose."""
     return {
-        "patient_id": 3,
         "age": 62,
         "weight_kg": 85.0,
         "height_cm": 175.0,
@@ -188,7 +185,6 @@ class TestAdvancedDoseCalculation:
         """Verify that safe dose range scales linearly with weight."""
         # Test with 50 kg patient
         light_patient = {
-            "patient_id": 10,
             "age": 30,
             "weight_kg": 50.0,
             "height_cm": 165.0,
@@ -209,7 +205,6 @@ class TestAdvancedDoseCalculation:
         
         # Test with 100 kg patient
         heavy_patient = light_patient.copy()
-        heavy_patient["patient_id"] = 11
         heavy_patient["weight_kg"] = 100.0
         heavy_patient["height_cm"] = 185.0
         heavy_patient["bmi"] = 29.2
