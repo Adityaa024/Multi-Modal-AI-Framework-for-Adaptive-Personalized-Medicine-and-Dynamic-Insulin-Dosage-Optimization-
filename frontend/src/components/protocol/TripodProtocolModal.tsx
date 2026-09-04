@@ -34,6 +34,7 @@ export default function TripodProtocolModal({ isOpen, onClose }: Props) {
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
           style={{
+            margin: 'auto',
             backgroundColor: 'var(--bg-card)',
             borderRadius: '16px',
             maxWidth: '820px',
