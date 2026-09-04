@@ -1,1 +1,9 @@
 case_id,rule_violated,expected,actual,severity
+4,ablation_structured_labs_differs_from_structured,different ml dose,"structured=17.7, structured_labs=17.7",Mild
+6,ablation_structured_differs_from_full,different ml dose,"full=29.7, structured=29.7",Moderate
+6,ablation_structured_labs_differs_from_structured,different ml dose,"structured=29.7, structured_labs=29.7",Moderate
+11,ablation_structured_differs_from_full,different ml dose,"full=27.0, structured=27.0",Moderate
+11,ablation_structured_labs_differs_from_structured,different ml dose,"structured=27.0, structured_labs=27.0",Moderate
+46,ablation_structured_labs_differs_from_structured,different ml dose,"structured=40.1, structured_labs=40.1",Severe
+50,ablation_structured_differs_from_full,different ml dose,"full=41.7, structured=41.7",Severe
+50,ablation_structured_labs_differs_from_structured,different ml dose,"structured=41.7, structured_labs=41.7",Severe

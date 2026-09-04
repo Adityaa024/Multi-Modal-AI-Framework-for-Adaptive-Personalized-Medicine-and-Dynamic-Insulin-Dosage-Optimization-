@@ -309,3 +309,40 @@ def test_drug_recommendation_block_has_explanation(client, prediction_payload) -
     assert isinstance(recommendation["adjunct_drug"], str)
     assert isinstance(recommendation["explanation"], str)
     assert len(recommendation["explanation"]) > 20
+
+
+def test_contraindications_align_with_hypoglycemia_alert(client, prediction_payload) -> None:
+    # Trigger hypoglycemia_alert via low fasting glucose (< 80) but keep hypo_prob below 0.70
+    payload = {
+        **prediction_payload,
+        "fasting_glucose_mgdl": 75,
+        "glucose_after_dose_mgdl": 130,
+        "previous_insulin_dose_units": 10,
+        "feature_mode": "full",
+    }
+    response = client.post("/api/v1/predictions/predict-dose", json=payload)
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert body["hypoglycemia_alert"] is True
+    contraindications = body["drug_recommendation"]["contraindications"]
+    assert any("Avoid aggressive insulin escalation" in c for c in contraindications)
+
+
+def test_sglt2_elderly_aki_contraindication_is_deduplicated(client, prediction_payload) -> None:
+    # Age > 65 and Creatinine > 2.0 triggers elderly AKI without duplicating > 1.8 renal warning
+    payload = {
+        **prediction_payload,
+        "age": 72,
+        "creatinine_mgdl": 2.3,
+        "feature_mode": "full",
+    }
+    response = client.post("/api/v1/predictions/predict-dose", json=payload)
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    contraindications = body["drug_recommendation"]["contraindications"]
+    sglt2_contras = [c for c in contraindications if "SGLT2" in c]
+    # Verify exactly 1 consolidated SGLT2 contraindication is present
+    assert len(sglt2_contras) == 1
+    assert "high risk of AKI in elderly renal impairment" in sglt2_contras[0]

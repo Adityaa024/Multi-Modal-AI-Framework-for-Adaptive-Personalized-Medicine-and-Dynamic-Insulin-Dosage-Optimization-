@@ -109,6 +109,9 @@ def train_and_evaluate() -> None:
         stratify=y_int,
     )
 
+    print(f"Total dataset size: {len(df)}")
+    print(f"Class distribution: {dict(zip(class_order, np.bincount(y_int)))}")
+
     X_train, X_val, y_train, y_val = train_test_split(
         X_train_full,
         y_train_full,
@@ -116,6 +119,10 @@ def train_and_evaluate() -> None:
         random_state=42,
         stratify=y_train_full,
     )
+
+    print(f"Train split size: {len(X_train)} ({(len(X_train)/len(df)):.1%})")
+    print(f"Validation split size: {len(X_val)} ({(len(X_val)/len(df)):.1%})")
+    print(f"Test split size: {len(X_test)} ({(len(X_test)/len(df)):.1%})")
 
     train_class_counts = np.bincount(y_train, minlength=3)
     total_count = float(train_class_counts.sum())
@@ -125,21 +132,56 @@ def train_and_evaluate() -> None:
     }
     sample_weight = np.array([class_weights[int(label)] for label in y_train], dtype=float)
 
-    model = XGBClassifier(
-        n_estimators=600,
-        max_depth=5,
-        learning_rate=0.03,
-        subsample=0.85,
-        colsample_bytree=0.85,
+    from sklearn.model_selection import RandomizedSearchCV
+    
+    param_grid = {
+        'learning_rate': [0.01, 0.03, 0.05],
+        'max_depth': [3, 5, 7],
+        'n_estimators': [300, 600],
+        'subsample': [0.7, 0.85, 1.0],
+    }
+
+    base_model = XGBClassifier(
         min_child_weight=2,
         gamma=0.1,
         reg_alpha=0.2,
         reg_lambda=2.0,
+        colsample_bytree=0.85,
         objective="multi:softprob",
         eval_metric="mlogloss",
         random_state=42,
         n_jobs=-1,
         num_class=3,
+    )
+
+    print("\nStarting Hyperparameter Optimization (3-Fold CV)...")
+    search = RandomizedSearchCV(
+        base_model,
+        param_distributions=param_grid,
+        n_iter=5,
+        scoring="accuracy",
+        cv=3,
+        random_state=42,
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    search.fit(X_train_full, y_train_full)
+    
+    print(f"Best hyperparameters found: {search.best_params_}")
+    
+    model = XGBClassifier(
+        min_child_weight=2,
+        gamma=0.1,
+        reg_alpha=0.2,
+        reg_lambda=2.0,
+        colsample_bytree=0.85,
+        objective="multi:softprob",
+        eval_metric="mlogloss",
+        random_state=42,
+        n_jobs=-1,
+        num_class=3,
+        **search.best_params_
     )
 
     model.fit(

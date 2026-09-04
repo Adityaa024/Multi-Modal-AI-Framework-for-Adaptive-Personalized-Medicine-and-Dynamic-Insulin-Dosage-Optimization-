@@ -109,6 +109,17 @@ def recommend_drug(
     """
     Recommend adjunct therapy using a rule-based safety-first baseline.
 
+    CLINICAL RULE NOTE (For Reviewers):
+    The logic implemented here mirrors established standard-of-care guidelines (e.g., ADA guidelines):
+    - Metformin is the default first-line therapy unless contraindicated by renal 
+      impairment (creatinine > 1.5).
+    - GLP-1 Receptor Agonists are preferred for patients with higher BMI (> 30) due 
+      to their weight-loss benefits, but avoided for underweight patients.
+    - SGLT2 inhibitors are avoided in severe renal impairment (creatinine > 1.8) or 
+      high AKI risk (elderly with creatinine > 2.0).
+    - DPP-4 inhibitors serve as a renally safer fallback when others are contraindicated.
+    - Severe cases (HbA1c > 9.0% or Severe prediction) trigger insulin-centric therapy.
+
     Parameters
     ----------
     patient_features:
@@ -138,6 +149,7 @@ def recommend_drug(
     severity_conf = float(_value(severity_output, "confidence_score", 0.5))
     recommended_dose = float(_value(dosage_output, "recommended_dose_units", 0.0))
     hypoglycemia_risk_prob = float(_value(dosage_output, "hypoglycemia_risk_probability", 0.0))
+    hypoglycemia_alert = bool(_value(dosage_output, "hypoglycemia_alert", False))
     risk_alert = bool(_value(dosage_output, "risk_alert", False))
 
     primary_therapy = PRIMARY_BASAL_CONTINUATION
@@ -171,18 +183,17 @@ def recommend_drug(
         if adjunct_drug == DRUG_GLP1:
             adjunct_drug = DRUG_DPP4
 
-    if creatinine > 1.8:
-        contraindications.append(CONTRA_AVOID_SGLT2_RENAL)
-        if DRUG_SGLT2 in adjunct_drug:
-            adjunct_drug = DRUG_DPP4_RENAL if creatinine > 2.0 else DRUG_DPP4
-
     if creatinine > 2.0 and age > 65:
         contraindications.append(CONTRA_AVOID_SGLT2_AKI_ELDERLY)
         if DRUG_SGLT2 in adjunct_drug or "SGLT2" in adjunct_drug:
             adjunct_drug = DRUG_DPP4_RENAL
+    elif creatinine > 1.8:
+        contraindications.append(CONTRA_AVOID_SGLT2_RENAL)
+        if DRUG_SGLT2 in adjunct_drug:
+            adjunct_drug = DRUG_DPP4_RENAL if creatinine > 2.0 else DRUG_DPP4
 
-    # Hypoglycemia contraindication must be tied only to explicit hypo signals.
-    if hypoglycemia_risk_prob > 0.70 or glucose_after_dose < 70:
+    # Hypoglycemia contraindication aligns with pipeline-level hypoglycemia alerts.
+    if hypoglycemia_risk_prob > 0.70 or glucose_after_dose < 70 or hypoglycemia_alert:
         contraindications.append(CONTRA_AVOID_AGGRESSIVE_INSULIN)
 
     if severity == SEVERITY_MILD and hba1c < 7.2 and fasting_glucose < 130 and diet_adherence >= 75:

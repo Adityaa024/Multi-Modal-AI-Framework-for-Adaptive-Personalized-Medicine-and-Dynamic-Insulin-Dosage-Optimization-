@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -39,7 +39,7 @@ class Patient(Base):
     baseline_hba1c: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationship to historical insulin doses and glucose readings
@@ -63,7 +63,7 @@ class DoseHistory(Base):
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
 
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, index=True
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
 
     # Glucose metrics (mg/dL) close to the time of the dose

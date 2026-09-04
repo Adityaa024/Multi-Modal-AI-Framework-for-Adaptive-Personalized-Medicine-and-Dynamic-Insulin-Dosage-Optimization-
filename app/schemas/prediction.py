@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
@@ -36,7 +36,7 @@ class InsulinDosePredictionRequest(BaseModel):
     )
 
     request_timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp assigned by the caller; defaults to server time.",
     )
 
@@ -106,11 +106,14 @@ class DosePredictionPatientInput(BaseModel):
     )
     feature_mode: Literal["structured", "structured_labs", "full"] = Field(
         default="full",
-        validation_alias=AliasChoices("feature_mode", "ablation_mode"),
         description=(
             "Ablation mode controlling which modality groups are used for inference: "
             "structured only, structured+l labs, or full multi-modal."
         ),
+    )
+    patient_id: int | None = Field(
+        default=None,
+        description="Optional patient ID to persist this prediction into longitudinal dose history.",
     )
 
 

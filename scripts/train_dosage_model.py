@@ -29,7 +29,7 @@ def build_feature_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def train_and_evaluate() -> None:
-    """Train the XGBoost regressor and report MAE and RMSE."""
+    """Train the XGBoost regressor with CV and report MAE and RMSE."""
 
     if not DATA_PATH.exists():
         raise FileNotFoundError(
@@ -48,30 +48,66 @@ def train_and_evaluate() -> None:
     X = build_feature_matrix(df)
     y = df["simulated_optimal_insulin_dose_units"]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=42,
+    print(f"Total dataset size: {len(df)}")
+    
+    # Create train, validation, and test splits (64% train, 16% val, 20% test)
+    X_train_full, X_test, y_train_full, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train_full, y_train_full, test_size=0.2, random_state=42
     )
 
-    model = XGBRegressor(
+    print(f"Train split size: {len(X_train)} ({(len(X_train)/len(df)):.1%})")
+    print(f"Validation split size: {len(X_val)} ({(len(X_val)/len(df)):.1%})")
+    print(f"Test split size: {len(X_test)} ({(len(X_test)/len(df)):.1%})")
+
+    from sklearn.model_selection import RandomizedSearchCV
+    
+    param_grid = {
+        'learning_rate': [0.01, 0.05, 0.1],
+        'max_depth': [4, 6, 8],
+        'n_estimators': [200, 500],
+        'subsample': [0.8, 1.0],
+        'colsample_bytree': [0.8, 1.0],
+    }
+
+    base_model = XGBRegressor(
         objective="reg:squarederror",
-        learning_rate=0.05,
-        n_estimators=500,
-        max_depth=6,
-        subsample=0.8,
-        colsample_bytree=0.8,
         random_state=42,
         n_jobs=-1,
+    )
+    
+    print("\nStarting Hyperparameter Optimization (3-Fold CV)...")
+    search = RandomizedSearchCV(
+        base_model,
+        param_distributions=param_grid,
+        n_iter=5,
+        scoring="neg_mean_absolute_error",
+        cv=3,
+        random_state=42,
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    search.fit(X_train_full, y_train_full)
+    
+    print(f"Best hyperparameters found: {search.best_params_}")
+    
+    model = XGBRegressor(
+        objective="reg:squarederror",
+        random_state=42,
+        n_jobs=-1,
+        **search.best_params_
     )
 
     feature_weights = np.ones(len(DOSE_REGRESSION_FEATURE_NAMES), dtype=float)
     feature_weights[DOSE_REGRESSION_FEATURE_NAMES.index("previous_insulin_dose_units")] = 3.0
 
+    # Fit final model with feature weights
     model.fit(
-        X_train,
-        y_train,
+        X_train_full,
+        y_train_full,
         feature_weights=feature_weights,
     )
 
@@ -80,6 +116,7 @@ def train_and_evaluate() -> None:
     mae = mean_absolute_error(y_test, y_pred)
     rmse = math.sqrt(mean_squared_error(y_test, y_pred))
 
+    print(f"\nFinal Test Set Metrics:")
     print(f"MAE:  {mae:.4f}")
     print(f"RMSE: {rmse:.4f}")
 

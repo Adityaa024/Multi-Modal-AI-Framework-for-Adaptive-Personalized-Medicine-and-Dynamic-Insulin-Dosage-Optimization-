@@ -71,7 +71,7 @@ def _base_case(rng: random.Random, severity_band: str) -> dict[str, Any]:
         "diet_adherence_score": diet,
         "previous_insulin_dose_units": previous_dose,
         "glucose_after_dose_mgdl": glucose_after,
-        "ablation_mode": "full",
+        "feature_mode": "full",
     }
 
 
@@ -162,8 +162,7 @@ def _apply_edge_cases(cases: list[dict[str, Any]], rng: random.Random) -> None:
             )
 
         case["previous_insulin_dose_units"] = float(max(0.0, min(60.0, case["previous_insulin_dose_units"])))
-        case["ablation_mode"] = "full"
-
+        case["feature_mode"] = "full"
 
 def generate_synthetic_cases(seed: int = SEED) -> list[dict[str, Any]]:
     rng = random.Random(seed)
@@ -497,7 +496,7 @@ def main() -> None:
     with requests.Session() as session:
         for idx, patient in enumerate(tqdm(cases, desc="Testing API", unit="case"), start=1):
             full_payload = dict(patient)
-            full_payload["ablation_mode"] = "full"
+            full_payload["feature_mode"] = "full"
             full_response, response_time_ms, conn_err = _post_case(session, full_payload)
 
             if full_response is None:
@@ -530,11 +529,11 @@ def main() -> None:
                 continue
 
             structured_payload = dict(patient)
-            structured_payload["ablation_mode"] = "structured"
+            structured_payload["feature_mode"] = "structured"
             structured_resp, _, _ = _post_case(session, structured_payload)
 
             structured_labs_payload = dict(patient)
-            structured_labs_payload["ablation_mode"] = "structured_labs"
+            structured_labs_payload["feature_mode"] = "structured_labs"
             structured_labs_resp, _, _ = _post_case(session, structured_labs_payload)
 
             case_errors, case_anomalies = validate_case(

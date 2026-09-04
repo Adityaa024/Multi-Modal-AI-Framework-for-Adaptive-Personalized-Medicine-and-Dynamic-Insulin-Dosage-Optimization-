@@ -1,0 +1,369 @@
+import { motion, AnimatePresence } from 'framer-motion'
+import type { PredictDoseResponse, EvaluationDashboardResponse, PatientInput } from "../../lib/api"
+import { useState } from 'react'
+import { ChevronDown, ChevronUp, Loader2, Sparkles, FileText, CheckCircle2 } from 'lucide-react'
+
+type Props = {
+  result: PredictDoseResponse | null
+  evaluationData: EvaluationDashboardResponse | null
+  form: PatientInput
+  loading: boolean
+  error: string | null
+}
+
+interface FeatureMeta {
+  label: string
+  category: string
+  formatValue: (form: PatientInput) => string
+}
+
+const FEATURE_METADATA: Record<string, FeatureMeta> = {
+  previous_insulin_dose_units: {
+    label: 'Previous Insulin Dose',
+    category: 'Prior Treatment',
+    formatValue: (f) => `${f.previous_insulin_dose_units} U`,
+  },
+  hba1c: {
+    label: 'HbA1c',
+    category: 'Laboratory Marker',
+    formatValue: (f) => `${f.hba1c}%`,
+  },
+  weight_kg: {
+    label: 'Body Weight',
+    category: 'Demographics & Vitals',
+    formatValue: (f) => `${f.weight_kg} kg`,
+  },
+  fasting_glucose_mgdl: {
+    label: 'Fasting Glucose',
+    category: 'Laboratory Marker',
+    formatValue: (f) => `${f.fasting_glucose_mgdl} mg/dL`,
+  },
+  weight_adjusted_dose: {
+    label: 'Weight-Adjusted Dose',
+    category: 'Engineered Interaction',
+    formatValue: (f) => {
+      const w = f.weight_kg > 0 ? f.weight_kg : 1
+      return `${(f.previous_insulin_dose_units / w).toFixed(2)} U/kg`
+    },
+  },
+  activity_level: {
+    label: 'Physical Activity Level',
+    category: 'Behavioral Factor',
+    formatValue: (f) => ['Sedentary', 'Low', 'Moderate', 'High'][f.activity_level] || `${f.activity_level}`,
+  },
+  diet_adherence_score: {
+    label: 'Diet Adherence Score',
+    category: 'Behavioral Factor',
+    formatValue: (f) => `${f.diet_adherence_score} / 100`,
+  },
+  creatinine_mgdl: {
+    label: 'Serum Creatinine',
+    category: 'Laboratory Marker',
+    formatValue: (f) => `${f.creatinine_mgdl} mg/dL`,
+  },
+  age: {
+    label: 'Patient Age',
+    category: 'Demographics & Vitals',
+    formatValue: (f) => `${f.age} years`,
+  },
+  height_cm: {
+    label: 'Height',
+    category: 'Demographics & Vitals',
+    formatValue: (f) => `${f.height_cm} cm`,
+  },
+  bmi: {
+    label: 'Body Mass Index (BMI)',
+    category: 'Demographics & Vitals',
+    formatValue: (f) => {
+      const bmi = f.bmi || (f.weight_kg / Math.pow(f.height_cm / 100, 2))
+      return `${bmi ? bmi.toFixed(1) : '--'} kg/m²`
+    },
+  },
+  glucose_after_dose_mgdl: {
+    label: 'Post-Dose Glucose',
+    category: 'Historical Glycemic Response',
+    formatValue: (f) => `${f.glucose_after_dose_mgdl} mg/dL`,
+  },
+  glucose_hba1c_interaction: {
+    label: 'Glucose × HbA1c Interaction',
+    category: 'Engineered Interaction',
+    formatValue: (f) => `${Math.round(f.fasting_glucose_mgdl * f.hba1c).toLocaleString()}`,
+  },
+  dose_response_ratio: {
+    label: 'Dose-to-Response Ratio',
+    category: 'Engineered Interaction',
+    formatValue: (f) => {
+      const g = f.glucose_after_dose_mgdl > 0 ? f.glucose_after_dose_mgdl : 1
+      return `${(f.previous_insulin_dose_units / g).toFixed(3)} U/(mg/dL)`
+    },
+  },
+  insulin_resistance: {
+    label: 'Insulin Resistance Index',
+    category: 'Engineered Interaction',
+    formatValue: (f) => {
+      const bmi = f.bmi || (f.weight_kg / Math.pow(f.height_cm / 100, 2))
+      return `${((bmi * f.fasting_glucose_mgdl) / 100).toFixed(1)}`
+    },
+  },
+}
+
+function resolveFeatureInfo(rawKey: string, form: PatientInput) {
+  const meta = FEATURE_METADATA[rawKey]
+  if (meta) {
+    return {
+      label: meta.label,
+      category: meta.category,
+      value: meta.formatValue(form),
+    }
+  }
+
+  // Fallback for unknown feature
+  const formatted = rawKey
+    .replace(/_/g, ' ')
+    .replace(/\bmgdl\b/i, '(mg/dL)')
+    .replace(/\bkg\b/i, '(kg)')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+
+  return {
+    label: formatted,
+    category: 'Clinical Marker',
+    value: '--',
+  }
+}
+
+export default function ExplainabilityView({ result, evaluationData, form, loading, error }: Props) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (loading && !evaluationData) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6rem 2rem', gap: '1rem' }}>
+        <Loader2 className="animate-spin" size={32} color="var(--accent-primary)" />
+        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+          Computing SHAP values and model feature attributions...
+        </span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '2rem', background: 'rgba(239, 68, 68, 0.08)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)', color: 'var(--accent-danger)' }}>
+        <strong>Error loading explainability metrics:</strong> {error}
+      </div>
+    )
+  }
+
+  if (!result) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '5rem 2rem', background: 'var(--bg-app)', border: '2px dashed var(--border-light)' }}>
+        <FileText size={40} style={{ color: 'var(--text-muted)', margin: '0 auto 1rem auto' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+          No Active Prediction Session
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: '440px', margin: '0 auto', fontSize: '0.875rem', lineHeight: 1.5 }}>
+          Please go to the <strong>Prediction</strong> tab and click <strong>Predict</strong> to generate patient-specific decision explanations and feature attributions.
+        </p>
+      </div>
+    )
+  }
+
+  const rawDrivers = result.explanation || ''
+  const driversText = rawDrivers ? rawDrivers.charAt(0).toUpperCase() + rawDrivers.slice(1) : 'Model prediction based on balanced multi-modal clinical signals.'
+
+  const shapPoints = evaluationData?.shap_summary || []
+  const maxShap = shapPoints.length ? Math.max(...shapPoints.map((s) => s.mean_abs_shap)) : 1
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      transition={{ duration: 0.4 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}
+    >
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+          <Sparkles size={18} style={{ color: 'var(--accent-primary)' }} />
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Explainable AI Framework
+          </span>
+        </div>
+        <h2 style={{ fontSize: '1.625rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+          WHY DID THE MODEL MAKE THIS RECOMMENDATION?
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '0.375rem', fontSize: '0.875rem' }}>
+          Dual-level transparency combining natural language clinical rationales with rigorous SHAP (SHapley Additive exPlanations) values.
+        </p>
+      </div>
+
+      {/* 1. Natural Language Explanation Card */}
+      <div className="card" style={{ background: 'var(--bg-card)', border: '1.5px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <CheckCircle2 size={18} style={{ color: 'var(--accent-primary)' }} />
+          <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Patient-Specific Clinical Rationale
+          </h3>
+        </div>
+        <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', lineHeight: 1.6, padding: '1rem', background: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+          {driversText}
+        </p>
+
+        <button 
+          onClick={() => setExpanded(!expanded)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '1rem', background: 'none', border: 'none', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer' }}
+        >
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {expanded ? 'Hide Technical Formulation' : 'View Methodology & Technical Formulation'}
+        </button>
+
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                SHAP feature contributions are computed via TreeExplainer across the ensemble model (XGBoost severity classifier & ridge regression dosage regressor). Each Shapley value represents the marginal contribution of a clinical feature to the deviation from the expected baseline population outcome.
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* 2. Visual Feature Contribution with Actual Data Values */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              SHAP Global Feature Importance & Active Patient Data
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              Ranked mean absolute SHAP values |E[f(x)]| correlated with current patient values
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', fontWeight: 600 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: 'var(--text-secondary)' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--accent-primary)' }} />
+              Relative Importance Bar
+            </span>
+          </div>
+        </div>
+
+        {shapPoints.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            No SHAP summary data points available from evaluation cache.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Table Header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(200px, 1.4fr) minmax(130px, 0.9fr) minmax(110px, 0.7fr) minmax(140px, 1.2fr)',
+                gap: '1rem',
+                padding: '0.5rem 0.875rem',
+                fontSize: '0.6875rem',
+                fontWeight: 700,
+                color: 'var(--text-secondary)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                borderBottom: '1px solid var(--border-light)',
+              }}
+            >
+              <div>Rank & Feature</div>
+              <div>Patient Value</div>
+              <div>Mean |SHAP| Score</div>
+              <div>Impact Weight</div>
+            </div>
+
+            {shapPoints.map((item, index) => {
+              const info = resolveFeatureInfo(item.feature, form)
+              const pctOfMax = (item.mean_abs_shap / maxShap) * 100
+
+              return (
+                <div 
+                  key={item.feature}
+                  style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'minmax(200px, 1.4fr) minmax(130px, 0.9fr) minmax(110px, 0.7fr) minmax(140px, 1.2fr)', 
+                    alignItems: 'center',
+                    gap: '1rem',
+                    padding: '0.75rem 0.875rem',
+                    borderRadius: '8px',
+                    background: index % 2 === 0 ? 'var(--bg-app)' : 'var(--bg-card)',
+                    border: '1px solid var(--border-light)',
+                  }}
+                >
+                  {/* Column 1: Rank + Feature Name + Category */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span 
+                      style={{ 
+                        fontSize: '0.6875rem', 
+                        fontWeight: 700, 
+                        width: '26px', 
+                        height: '26px', 
+                        borderRadius: '6px', 
+                        background: index < 3 ? 'rgba(5, 150, 105, 0.12)' : 'rgba(0,0,0,0.05)', 
+                        color: index < 3 ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      #{index + 1}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {info.label}
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                        {info.category}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Patient's Current Value */}
+                  <div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {info.value}
+                    </div>
+                  </div>
+
+                  {/* Column 3: Mean |SHAP| Numerical Score */}
+                  <div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
+                      {item.mean_abs_shap.toFixed(4)}
+                    </div>
+                  </div>
+
+                  {/* Column 4: Animated Relative Bar */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                      <span>Relative Weight</span>
+                      <strong>{pctOfMax.toFixed(0)}%</strong>
+                    </div>
+                    <div style={{ height: '8px', background: 'rgba(0,0,0,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pctOfMax}%` }}
+                        transition={{ delay: index * 0.05, duration: 0.8, ease: 'easeOut' }}
+                        style={{
+                          height: '100%',
+                          borderRadius: '999px',
+                          background: index < 3 ? 'var(--accent-primary)' : 'rgba(5, 150, 105, 0.65)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}

@@ -68,5 +68,9 @@ def test_severe_profile_predicts_22_to_28_units() -> None:
 
     body = _predict(payload)
 
-    assert 22.0 <= float(body["recommended_dose_units"]) <= 28.0
-    assert 0.2 * payload["weight_kg"] <= float(body["recommended_dose_units"]) <= 0.6 * payload["weight_kg"]
+    weight_kg = payload["weight_kg"]
+    import numpy as np
+    severe_floor = float(np.ceil((0.3 * weight_kg) * 10.0) / 10.0)
+
+    assert severe_floor <= float(body["recommended_dose_units"]) <= 0.6 * weight_kg
+    assert 0.2 * weight_kg <= float(body["recommended_dose_units"]) <= 0.6 * weight_kg

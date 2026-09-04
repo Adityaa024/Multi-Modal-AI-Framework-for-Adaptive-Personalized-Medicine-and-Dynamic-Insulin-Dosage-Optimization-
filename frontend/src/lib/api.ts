@@ -80,6 +80,12 @@ export type EvaluationDashboardResponse = {
   shap_summary: Array<{ feature: string; mean_abs_shap: number }>
 }
 
+export type TrendPoint = {
+  at: string
+  fasting_glucose_mgdl: number
+  recommended_dose_units: number
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 function apiUrl(path: string): string {

@@ -34,16 +34,15 @@ def create_app() -> FastAPI:
         if origin.strip()
     ]
 
-    if not allowed_origins:
-        # Local dev defaults when ALLOWED_ORIGINS is not set.
-        allowed_origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ]
+    # Always ensure local dev ports are permitted
+    for dev_origin in ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]:
+        if dev_origin not in allowed_origins:
+            allowed_origins.append(dev_origin)
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
+        allow_origin_regex=r"https:\/\/.*\.onrender\.com",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

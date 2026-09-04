@@ -352,42 +352,21 @@ def evaluate_once(noise_multiplier: float) -> EvalResult:
         noisy_train["activity_level"] = noisy_train["activity_level"].round().clip(1, 3).astype(int)
         noisy_test["activity_level"] = noisy_test["activity_level"].round().clip(1, 3).astype(int)
 
-    # Classification: XGBoost
-    class_order = ["Mild", "Moderate", "Severe"]
-    class_to_int = {c: i for i, c in enumerate(class_order)}
+    # Classification: Load Saved Model
+    import pickle
+    
+    with open("data/severity_model.pkl", "rb") as f:
+        sev_data = pickle.load(f)
+        cls_model = sev_data["model"]
+        if isinstance(sev_data, dict):
+            class_order = sev_data.get("class_order", ["Mild", "Moderate", "Severe"])
+            class_to_int = sev_data.get("class_to_int", {c: i for i, c in enumerate(class_order)})
+        else:
+            class_order = ["Mild", "Moderate", "Severe"]
+            class_to_int = {c: i for i, c in enumerate(class_order)}
 
-    X_train_cls = noisy_train[CLASS_FEATURES].copy()
     X_test_cls = noisy_test[CLASS_FEATURES].copy()
-    y_train_cls_int = y_train_cls.map(class_to_int).astype(int).to_numpy()
     y_test_cls_int = y_test_cls.map(class_to_int).astype(int).to_numpy()
-
-    # Controlled annotation uncertainty on training labels only (realistic labeling noise).
-    label_noise_rate = min(0.14, 0.08 + 0.05 * (noise_multiplier - 1.0) / 0.6)
-    flip_mask = np.random.default_rng(SEED + 99).random(len(y_train_cls_int)) < label_noise_rate
-    if flip_mask.any():
-        random_offsets = np.random.default_rng(SEED + 100).integers(1, 3, size=flip_mask.sum())
-        y_train_cls_int_noisy = y_train_cls_int.copy()
-        y_train_cls_int_noisy[flip_mask] = (y_train_cls_int_noisy[flip_mask] + random_offsets) % 3
-    else:
-        y_train_cls_int_noisy = y_train_cls_int
-
-    cls_model = XGBClassifier(
-        n_estimators=260,
-        max_depth=5,
-        learning_rate=0.04,
-        subsample=0.85,
-        colsample_bytree=0.85,
-        min_child_weight=2,
-        gamma=0.1,
-        reg_alpha=0.2,
-        reg_lambda=2.0,
-        objective="multi:softprob",
-        eval_metric="mlogloss",
-        random_state=SEED,
-        n_jobs=-1,
-        num_class=3,
-    )
-    cls_model.fit(X_train_cls, y_train_cls_int_noisy)
 
     y_pred_cls_int = cls_model.predict(X_test_cls)
     y_proba_cls = cls_model.predict_proba(X_test_cls)
@@ -404,19 +383,19 @@ def evaluate_once(noise_multiplier: float) -> EvalResult:
     roc_auc = float(roc_auc_score(y_test_eval, y_proba_cls, multi_class="ovr", average="macro"))
     cm = confusion_matrix(y_test_eval, y_pred_cls_int, labels=[0, 1, 2]).tolist()
 
-    # Regression: Random Forest
-    X_train_reg = build_dose_regression_frame(noisy_train)
+    # Regression: Load Saved Model
     X_test_reg = build_dose_regression_frame(noisy_test)
 
-    reg_model = RandomForestRegressor(
-        n_estimators=600,
-        max_depth=16,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=SEED,
-        n_jobs=-1,
-    )
-    reg_model.fit(X_train_reg, y_train_reg)
+    with open("data/dosage_model.pkl", "rb") as f:
+        dos_data = pickle.load(f)
+        if isinstance(dos_data, dict) and "model" in dos_data:
+            reg_model = dos_data["model"]
+            dosage_feature_names = dos_data.get("feature_names", list(X_test_reg.columns))
+        else:
+            reg_model = dos_data
+            dosage_feature_names = list(X_test_reg.columns)
+            
+    X_test_reg = X_test_reg[dosage_feature_names]
 
     y_pred_reg = reg_model.predict(X_test_reg)
 
@@ -439,6 +418,7 @@ def evaluate_once(noise_multiplier: float) -> EvalResult:
     stress_total = 1600
     stress_features = generate_stress_cases(stress_total, np.random.default_rng(SEED + 77))
     stress_frame = build_dose_regression_frame(stress_features)
+    stress_frame = stress_frame[dosage_feature_names]
 
     stress_pred = reg_model.predict(stress_frame)
     stress_weight = stress_features["weight_kg"].to_numpy(dtype=float)
